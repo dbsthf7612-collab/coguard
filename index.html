@@ -1,49 +1,378 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CoGuard 실시간 모니터</title>
-  <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-database-compat.js"></script>
-  <style>
-    /* 기존 CoGuard 스타일 그대로 */
-    body { font-family: sans-serif; text-align: center; padding: 20px; }
-    .good { background: #e8f5e9; }
-    .caution { background: #fff3e0; }
-    .danger { background: #ffebee; }
-    .value { font-size: 3rem; font-weight: bold; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoGuard — 실내 공기 모니터</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Pretendard:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --good:    #16a34a;
+    --caution: #ea580c;
+    --danger:  #dc2626;
+    --good-bg:    #f0fdf4;
+    --caution-bg: #fff7ed;
+    --danger-bg:  #fef2f2;
+    --good-dim:    #dcfce7;
+    --caution-dim: #ffedd5;
+    --danger-dim:  #fee2e2;
+    --fg: #111;
+    --muted: #6b7280;
+    --card: #fff;
+    --bg: #f5f6f8;
+    --border: #e5e7eb;
+    --accent: #16a34a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    padding: 24px 16px 40px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  /* ── 헤더 ── */
+  .header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .header-left { display: flex; align-items: baseline; gap: 8px; }
+  .logo { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo-sub { font-size: 13px; color: var(--muted); font-weight: 500; font-family: 'DM Mono', monospace; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #d1d5db;
+    transition: background 0.4s;
+    flex-shrink: 0;
+    margin-bottom: 3px;
+  }
+  .status-dot.online { background: var(--good); box-shadow: 0 0 0 3px #bbf7d0; animation: pulse 2s infinite; }
+  .status-dot.offline { background: #9ca3af; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 3px #bbf7d0; }
+    50%       { box-shadow: 0 0 0 6px #bbf7d050; }
+  }
+
+  .updated {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  /* ── 알림 배너 ── */
+  .alert-banner {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    font-weight: 600;
+    animation: slideDown 0.3s ease;
+  }
+  .alert-banner.show { display: flex; }
+  .alert-banner.caution { background: var(--caution-dim); color: var(--caution); }
+  .alert-banner.danger  { background: var(--danger-dim);  color: var(--danger); }
+  .alert-banner .icon { font-size: 18px; }
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── 카드 ── */
+  .card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05), 0 0 0 1px var(--border);
+    transition: box-shadow 0.3s, border-color 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    border-radius: 3px 0 0 3px;
+    transition: background 0.4s;
+  }
+  .card.good::before    { background: var(--good); }
+  .card.caution::before { background: var(--caution); }
+  .card.danger::before  { background: var(--danger); }
+
+  .card-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .card-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  .card-value {
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    font-family: 'DM Mono', monospace;
+    line-height: 1;
+    transition: color 0.4s;
+  }
+  .card-unit {
+    font-size: 14px;
+    color: var(--muted);
+    font-weight: 500;
+    margin-left: 4px;
+    margin-bottom: 6px;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    transition: background 0.4s, color 0.4s;
+    margin-top: 10px;
+  }
+  .badge.good    { background: var(--good-dim);    color: var(--good); }
+  .badge.caution { background: var(--caution-dim); color: var(--caution); }
+  .badge.danger  { background: var(--danger-dim);  color: var(--danger); }
+  .badge::before { content: '●'; font-size: 7px; }
+
+  /* ── 2열 그리드 ── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .grid2 .card { margin-bottom: 0; }
+  .grid2 .card-value { font-size: 28px; }
+
+  /* ── 오프라인 상태 ── */
+  .offline-notice {
+    display: none;
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+  }
+  .offline-notice.show { display: block; }
+  .offline-notice .big { font-size: 40px; margin-bottom: 12px; }
+  .offline-notice p { font-size: 14px; line-height: 1.6; }
+
+  /* ── 푸터 ── */
+  .footer {
+    text-align: center;
+    font-size: 11px;
+    color: #c4c7cc;
+    margin-top: 24px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* ── 스켈레톤 ── */
+  .skeleton {
+    background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 8px;
+    height: 42px;
+    width: 120px;
+  }
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+</style>
 </head>
 <body>
-  <h1>코가드 CoGuard</h1>
-  <p id="updated">로딩 중...</p>
-  <div id="co-box"><span class="value" id="co">--</span> ppm (CO)</div>
-  <div id="co2-box"><span class="value" id="co2">--</span> ppm (CO₂)</div>
-  <div><span id="temp">--</span>°C / <span id="hum">--</span>%</div>
 
-  <script>
-    const firebaseConfig = {
-      databaseURL: "https://coguard-xxxxx-default-rtdb.firebaseio.com"
-      // ↑ 본인 URL로 교체
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+<div class="header">
+  <div class="header-left">
+    <div class="logo">코가드</div>
+    <div class="logo-sub">CoGuard</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+    <div style="display:flex;align-items:center;gap:6px">
+      <div class="status-dot" id="dot"></div>
+      <span class="updated" id="upd">연결 중...</span>
+    </div>
+  </div>
+</div>
 
-    db.ref("/coguard").on("value", (snap) => {
-      const d = snap.val();
-      if (!d) return;
-      
-      document.getElementById("co").textContent = d.co?.toFixed(1) ?? "--";
-      document.getElementById("co2").textContent = d.co2 ?? "--";
-      document.getElementById("temp").textContent = d.temp?.toFixed(1) ?? "--";
-      document.getElementById("hum").textContent = d.humidity ?? "--";
-      document.getElementById("updated").textContent = "최근 업데이트: " + new Date().toLocaleTimeString();
-      
-      // 상태에 따라 배경색 변경
-      const status = d.status;
-      document.body.className = status; // good / caution / danger
+<!-- 알림 배너 -->
+<div class="alert-banner" id="banner">
+  <span class="icon" id="banner-icon"></span>
+  <span id="banner-text"></span>
+</div>
+
+<!-- 오프라인 -->
+<div class="offline-notice" id="offline">
+  <div class="big">📡</div>
+  <p>기기가 오프라인이거나<br>데이터를 수신하지 못하고 있어요.<br><br>CoGuard 전원을 확인해 주세요.</p>
+</div>
+
+<!-- CO -->
+<div class="card good" id="co-card">
+  <div class="card-label">일산화탄소 (CO)</div>
+  <div class="card-row">
+    <div>
+      <div class="skeleton" id="co-skel"></div>
+      <span class="card-value" id="co" style="display:none">--</span><span class="card-unit" id="co-unit" style="display:none">ppm</span>
+    </div>
+  </div>
+  <div class="badge good" id="co-badge">측정 중</div>
+</div>
+
+<!-- CO2 -->
+<div class="card good" id="co2-card">
+  <div class="card-label">이산화탄소 (CO₂)</div>
+  <div class="card-row">
+    <div>
+      <div class="skeleton" id="co2-skel"></div>
+      <span class="card-value" id="co2" style="display:none">--</span><span class="card-unit" id="co2-unit" style="display:none">ppm</span>
+    </div>
+  </div>
+  <div class="badge good" id="co2-badge">측정 중</div>
+</div>
+
+<!-- 온도 / 습도 -->
+<div class="grid2">
+  <div class="card" id="temp-card">
+    <div class="card-label">온도</div>
+    <div class="skeleton" id="temp-skel"></div>
+    <span class="card-value" id="temp" style="display:none">--</span><span class="card-unit" id="temp-unit" style="display:none">°C</span>
+  </div>
+  <div class="card" id="hum-card">
+    <div class="card-label">습도</div>
+    <div class="skeleton" id="hum-skel"></div>
+    <span class="card-value" id="hum" style="display:none">--</span><span class="card-unit" id="hum-unit" style="display:none">%</span>
+  </div>
+</div>
+
+<div class="footer">CoGuard v2.4 · CLEAR 팀 · 자동 갱신 5초</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const app = initializeApp({
+    databaseURL: "https://coguard-cf8a4-default-rtdb.firebaseio.com"
+  });
+  const db = getDatabase(app);
+
+  // 스켈레톤 제거
+  function removeSkeleton() {
+    ['co','co2','temp','hum'].forEach(id => {
+      const skel = document.getElementById(id + '-skel');
+      if (skel) skel.remove();
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'inline';
+      const unit = document.getElementById(id + '-unit');
+      if (unit) unit.style.display = 'inline';
     });
-  </script>
+  }
+
+  function badge(status) {
+    if (status === 2) return ['danger',  '위험'];
+    if (status === 1) return ['caution', '주의'];
+    return ['good', '좋음'];
+  }
+
+  function fmt(n) { return ('0'+n).slice(-2); }
+
+  function updateBanner(coStatus, co2Status) {
+    const banner = document.getElementById('banner');
+    const worst = Math.max(coStatus, co2Status);
+    if (worst === 2) {
+      banner.className = 'alert-banner show danger';
+      document.getElementById('banner-icon').textContent = '🚨';
+      document.getElementById('banner-text').textContent = '위험 수준 감지! 즉시 환기하세요.';
+    } else if (worst === 1) {
+      banner.className = 'alert-banner show caution';
+      document.getElementById('banner-icon').textContent = '⚠️';
+      document.getElementById('banner-text').textContent = '공기 질 주의 — 환기를 권장합니다.';
+    } else {
+      banner.className = 'alert-banner';
+    }
+  }
+
+  let firstLoad = true;
+  let lastTs = null;
+  let offlineTimer = null;
+
+  onValue(ref(db, '/coguard'), (snap) => {
+    const d = snap.val();
+    if (!d) return;
+
+    // 오프라인 체크: ts가 300초 이상 안 바뀌면 오프라인 처리
+    if (lastTs === d.ts) {
+      // 같은 ts면 타이머 유지
+    } else {
+      lastTs = d.ts;
+      clearTimeout(offlineTimer);
+      document.getElementById('offline').classList.remove('show');
+      offlineTimer = setTimeout(() => {
+        document.getElementById('offline').classList.add('show');
+        document.getElementById('dot').className = 'status-dot offline';
+      }, 30000);
+    }
+
+    if (firstLoad) { removeSkeleton(); firstLoad = false; }
+
+    // 값 업데이트
+    const coVal  = typeof d.co  === 'number' ? d.co.toFixed(1)  : '--';
+    const co2Val = typeof d.co2 === 'number' ? d.co2            : '--';
+    const tVal   = typeof d.temp === 'number' ? d.temp.toFixed(1) : '--';
+    const hVal   = typeof d.humidity === 'number' ? Math.round(d.humidity) : '--';
+
+    document.getElementById('co').textContent   = coVal;
+    document.getElementById('co2').textContent  = co2Val;
+    document.getElementById('temp').textContent = tVal;
+    document.getElementById('hum').textContent  = hVal;
+
+    // 등급 계산
+    const co2Num = typeof d.co2 === 'number' ? d.co2 : 0;
+    const coNum  = typeof d.co  === 'number' ? d.co  : 0;
+    const coStatus  = coNum  >= 70 ? 2 : coNum  >= 10 ? 1 : 0;
+    const co2Status = co2Num >= 1500 ? 2 : co2Num >= 1000 ? 1 : 0;
+
+    const [coClass,  coText]  = badge(coStatus);
+    const [co2Class, co2Text] = badge(co2Status);
+
+    document.getElementById('co-card').className  = 'card ' + coClass;
+    document.getElementById('co2-card').className = 'card ' + co2Class;
+    document.getElementById('co-badge').className  = 'badge ' + coClass;
+    document.getElementById('co2-badge').className = 'badge ' + co2Class;
+    document.getElementById('co-badge').textContent  = coText;
+    document.getElementById('co2-badge').textContent = co2Text;
+    // badge::before 는 CSS로 처리
+
+    updateBanner(coStatus, co2Status);
+
+    // 상태 dot
+    document.getElementById('dot').className = 'status-dot online';
+
+    // 업데이트 시각
+    const n = new Date();
+    const ap = n.getHours() < 12 ? '오전' : '오후';
+    const h  = n.getHours() % 12 || 12;
+    document.getElementById('upd').textContent =
+      ap + ' ' + h + ':' + fmt(n.getMinutes()) + ':' + fmt(n.getSeconds());
+  });
+</script>
 </body>
-</html>d
+</html>
